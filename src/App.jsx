@@ -9,49 +9,14 @@ function uid() {
   return crypto.randomUUID?.() ?? String(Date.now());
 }
 
-/** Retailers we can detect (extendable) */
 const RETAILERS = [
-  "Lidl",
-  "Aldi",
-  "Kaufland",
-  "REWE",
-  "EDEKA",
-  "PENNY",
-  "Netto",
-  "dm",
-  "Rossmann",
-  "Carrefour",
-  "Tesco",
-  "SPAR",
-  "Coop",
-  "Migros",
-  "Auchan",
-  "IKEA Family",
-  "Decathlon",
-  "H&M",
-  "Zara",
-  "MediaMarkt",
-  "Saturn",
-  "Douglas",
-  "Amazon",
-  "PayPal",
-  "Google",
-  "Apple",
-  "Uber",
-  "Bolt",
-  "Booking",
-  "Airbnb",
-  "Netflix",
-  "Spotify",
-  "DHL",
-  "GLS",
-  "DPD",
-  "PostNL",
-  "Deutsche Post",
-  "Other"
+  "Lidl","Aldi","Kaufland","REWE","EDEKA","PENNY","Netto","dm","Rossmann",
+  "Carrefour","Tesco","SPAR","Coop","Migros","Auchan","IKEA Family","Decathlon",
+  "H&M","Zara","MediaMarkt","Saturn","Douglas","Amazon","PayPal","Google","Apple",
+  "Uber","Bolt","Booking","Airbnb","Netflix","Spotify","DHL","GLS","DPD","PostNL",
+  "Deutsche Post","Other"
 ];
 
-/** Countries list (same as earlier, shortened a bit is fine — keep as you like) */
 const COUNTRIES = [
   { code: "NL", name: "Netherlands" },
   { code: "DE", name: "Germany" },
@@ -93,7 +58,6 @@ function countryName(code) {
   return COUNTRIES.find((c) => c.code === code)?.name || code || "—";
 }
 
-/** If QR format, or if value is not strictly digits (simple heuristic) */
 function isQr(zxingFormat, value) {
   if (zxingFormat === "QR_CODE") return true;
   return !/^\d+$/.test((value || "").trim());
@@ -101,18 +65,12 @@ function isQr(zxingFormat, value) {
 
 function toJsBarcodeFormat(zxingFormat, value) {
   switch (zxingFormat) {
-    case "EAN_13":
-      return "EAN13";
-    case "EAN_8":
-      return "EAN8";
-    case "CODE_128":
-      return "CODE128";
-    case "CODE_39":
-      return "CODE39";
-    case "ITF":
-      return "ITF";
-    case "UPC_A":
-      return "UPC";
+    case "EAN_13": return "EAN13";
+    case "EAN_8": return "EAN8";
+    case "CODE_128": return "CODE128";
+    case "CODE_39": return "CODE39";
+    case "ITF": return "ITF";
+    case "UPC_A": return "UPC";
     default:
       if (/^\d{13}$/.test(value)) return "EAN13";
       if (/^\d{8}$/.test(value)) return "EAN8";
@@ -120,83 +78,40 @@ function toJsBarcodeFormat(zxingFormat, value) {
   }
 }
 
-/** Locale → default country guess */
 function guessCountryFromLocale() {
   try {
     const loc = Intl.DateTimeFormat().resolvedOptions().locale || "";
     const m = loc.match(/-([A-Z]{2})\b/);
     if (m?.[1]) return m[1];
   } catch {}
-  return "DE"; // fallback
+  return "DE";
 }
 
-/** Map TLD to country */
 const TLD_TO_COUNTRY = {
-  de: "DE",
-  nl: "NL",
-  be: "BE",
-  fr: "FR",
-  it: "IT",
-  es: "ES",
-  pt: "PT",
-  at: "AT",
-  ch: "CH",
-  dk: "DK",
-  se: "SE",
-  no: "NO",
-  fi: "FI",
-  ie: "IE",
-  uk: "GB",
-  pl: "PL",
-  cz: "CZ",
-  sk: "SK",
-  hu: "HU",
-  si: "SI",
-  hr: "HR",
-  ro: "RO",
-  bg: "BG",
-  gr: "GR",
-  rs: "RS",
-  ba: "BA",
-  me: "ME",
-  mk: "MK",
-  al: "AL",
-  tr: "TR",
-  com: null,
-  org: null,
-  net: null
+  de: "DE", nl: "NL", be: "BE", fr: "FR", it: "IT", es: "ES", pt: "PT", at: "AT",
+  ch: "CH", dk: "DK", se: "SE", no: "NO", fi: "FI", ie: "IE", uk: "GB", pl: "PL",
+  cz: "CZ", sk: "SK", hu: "HU", si: "SI", hr: "HR", ro: "RO", bg: "BG", gr: "GR",
+  rs: "RS", ba: "BA", me: "ME", mk: "MK", al: "AL", tr: "TR", com: null, org: null, net: null
 };
 
-/** Retailer detection from host/keywords */
 function guessRetailerFromText(text) {
   const s = (text || "").toLowerCase();
-
-  // Lidl
   if (s.includes("lidl")) return "Lidl";
-  // Aldi
   if (s.includes("aldi")) return "Aldi";
-  // dm / Rossmann
   if (s.includes("dm.de") || s.includes("dm-drogerie") || s.includes("dm.at")) return "dm";
   if (s.includes("rossmann")) return "Rossmann";
-  // Amazon
   if (s.includes("amazon.")) return "Amazon";
-  // PayPal
-  if (s.includes("paypal." ) || s.includes("paypalme") || s.includes("paypal.me")) return "PayPal";
-  // Booking / Airbnb
+  if (s.includes("paypal.") || s.includes("paypalme") || s.includes("paypal.me")) return "PayPal";
   if (s.includes("booking.")) return "Booking";
   if (s.includes("airbnb.")) return "Airbnb";
-  // Post / shipping
   if (s.includes("dhl.")) return "DHL";
   if (s.includes("dpd.")) return "DPD";
   if (s.includes("gls.")) return "GLS";
   if (s.includes("postnl.")) return "PostNL";
   if (s.includes("deutschepost") || s.includes("dhl.de")) return "Deutsche Post";
-
-  // fallback
   return "Other";
 }
 
-/** Country guess from URL host / TLD */
 function guessCountryFromUrl(urlString) {
   try {
     const u = new URL(urlString);
@@ -205,9 +120,6 @@ function guessCountryFromUrl(urlString) {
     const tld = parts[parts.length - 1];
     const mapped = TLD_TO_COUNTRY[tld];
     if (mapped) return mapped;
-
-    // Some domains like lidl.de (tld de already handled)
-    // Some might have country in path/query, simple attempts:
     if (host.includes(".de")) return "DE";
     if (host.includes(".nl")) return "NL";
     if (host.includes(".rs")) return "RS";
@@ -215,7 +127,6 @@ function guessCountryFromUrl(urlString) {
   return null;
 }
 
-/** Detect everything we can from scanned/manual value */
 function autoDetectFromValue(value, zxingFormat) {
   const v = String(value || "").trim();
 
@@ -223,20 +134,15 @@ function autoDetectFromValue(value, zxingFormat) {
   let retailer = "Other";
   let format = zxingFormat || "";
 
-  // If looks like URL → strong detection
   const looksUrl = /^https?:\/\/|^www\./i.test(v);
   if (looksUrl) {
     const normalized = v.startsWith("http") ? v : `https://${v}`;
     const c = guessCountryFromUrl(normalized);
     if (c) country = c;
-
     retailer = guessRetailerFromText(normalized);
-    format = "QR_CODE"; // treat URLs as QR
+    format = "QR_CODE";
   } else {
-    // Non-url: try keyword detection anyway (some QR payloads are text)
     retailer = guessRetailerFromText(v);
-
-    // If ZXing gave a format, keep it; else guess based on digits length
     if (!format) {
       if (/^\d{13}$/.test(v)) format = "EAN_13";
       else if (/^\d{8}$/.test(v)) format = "EAN_8";
@@ -245,9 +151,7 @@ function autoDetectFromValue(value, zxingFormat) {
     }
   }
 
-  // nickname suggestion
   const nickname = retailer === "Other" ? "Nieuwe kaart" : `${retailer} kaart`;
-
   return { retailer, country, format, nickname };
 }
 
@@ -255,6 +159,7 @@ export default function App() {
   const reader = useMemo(() => new BrowserMultiFormatReader(), []);
   const scanControlsRef = useRef(null);
   const barcodeRef = useRef(null);
+  const addSheetRef = useRef(null);
 
   const [session, setSession] = useState(null);
   const [email, setEmail] = useState("");
@@ -263,35 +168,28 @@ export default function App() {
 
   const [cards, setCards] = useState([]);
 
-  // Add flow
   const [addOpen, setAddOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
 
   const [valueDraft, setValueDraft] = useState("");
   const [formatDraft, setFormatDraft] = useState("QR_CODE");
-
-  // Auto-detected / editable metadata for new card
   const [retailerDraft, setRetailerDraft] = useState("Other");
   const [countryDraft, setCountryDraft] = useState(guessCountryFromLocale());
   const [nicknameDraft, setNicknameDraft] = useState("Nieuwe kaart");
 
-  // Popup usage
   const [selected, setSelected] = useState(null);
   const [qrDataUrl, setQrDataUrl] = useState("");
 
-  // Filters
   const [filterRetailer, setFilterRetailer] = useState("All");
   const [filterCountry, setFilterCountry] = useState("All");
   const [search, setSearch] = useState("");
 
-  // Register SW
   useEffect(() => {
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/service-worker.js").catch(() => {});
     }
   }, []);
 
-  // Load local + auth
   useEffect(() => {
     const local = JSON.parse(localStorage.getItem("cards") || "[]");
     setCards(local);
@@ -307,7 +205,17 @@ export default function App() {
     localStorage.setItem("cards", JSON.stringify(cards));
   }, [cards]);
 
-  // Render code in popup
+  // iPhone fix: when scanning starts, scroll sheet to top so the video is visible
+  useEffect(() => {
+    if (addOpen && scanning) {
+      setTimeout(() => {
+        try {
+          addSheetRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+        } catch {}
+      }, 50);
+    }
+  }, [addOpen, scanning]);
+
   useEffect(() => {
     (async () => {
       if (!selected) return;
@@ -335,13 +243,9 @@ export default function App() {
   }, [selected]);
 
   function stopScan() {
-    try {
-      scanControlsRef.current?.stop();
-    } catch {}
+    try { scanControlsRef.current?.stop(); } catch {}
     scanControlsRef.current = null;
-    try {
-      reader.reset();
-    } catch {}
+    try { reader.reset(); } catch {}
     setScanning(false);
   }
 
@@ -379,23 +283,24 @@ export default function App() {
     await new Promise((r) => requestAnimationFrame(r));
 
     try {
-      const controls = await reader.decodeFromVideoDevice(undefined, "video", (result) => {
-        if (!result) return;
-        const value = String(result.getText() || "").trim();
-        const format = String(result.getBarcodeFormat() || "");
+      const controls = await reader.decodeFromVideoDevice(
+        undefined,
+        "video",
+        (result) => {
+          if (!result) return;
+          const value = String(result.getText() || "").trim();
+          const format = String(result.getBarcodeFormat() || "");
+          if (!value) return;
 
-        if (!value) return;
+          try { controls?.stop(); } catch {}
+          scanControlsRef.current = null;
+          try { reader.reset(); } catch {}
+          setScanning(false);
 
-        // stop immediately
-        try { controls?.stop(); } catch {}
-        scanControlsRef.current = null;
-        try { reader.reset(); } catch {}
-        setScanning(false);
-
-        // Auto-detect and fill fields
-        setValueDraft(value);
-        applyAutoDetect(value, format);
-      });
+          setValueDraft(value);
+          applyAutoDetect(value, format);
+        }
+      );
 
       scanControlsRef.current = controls;
     } catch {
@@ -406,10 +311,7 @@ export default function App() {
 
   function onManualValueChange(v) {
     setValueDraft(v);
-    // Auto-detect live while typing/pasting
-    if (v.trim().length > 0) {
-      applyAutoDetect(v, formatDraft);
-    }
+    if (v.trim().length > 0) applyAutoDetect(v, formatDraft);
   }
 
   function saveCard() {
@@ -673,6 +575,7 @@ export default function App() {
           <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={closeAdd}>
             <motion.div
               className="sheet"
+              ref={addSheetRef}
               initial={{ y: 40, scale: 0.98, opacity: 0 }}
               animate={{ y: 0, scale: 1, opacity: 1 }}
               exit={{ y: 40, scale: 0.98, opacity: 0 }}
@@ -694,7 +597,15 @@ export default function App() {
                 </div>
               ) : (
                 <>
-                  <video id="video" className="video" />
+                  <div className="videoWrap">
+                    <video
+                      id="video"
+                      className="video"
+                      playsInline
+                      muted
+                    />
+                  </div>
+
                   <div style={{ height: 10 }} />
                   <button className="ghost" onClick={stopScan}>Stop</button>
                   <p className="small">Richt op barcode/QR. Goede belichting + stilhouden helpt.</p>
@@ -730,7 +641,11 @@ export default function App() {
               <div className="grid2">
                 <div>
                   <div className="label">Format (auto)</div>
-                  <select className="select" value={formatDraft} onChange={(e) => { setFormatDraft(e.target.value); applyAutoDetect(valueDraft, e.target.value); }}>
+                  <select
+                    className="select"
+                    value={formatDraft}
+                    onChange={(e) => { setFormatDraft(e.target.value); applyAutoDetect(valueDraft, e.target.value); }}
+                  >
                     <option value="QR_CODE">QR (tekst/URL)</option>
                     <option value="CODE_128">Barcode (CODE128)</option>
                     <option value="EAN_13">EAN-13</option>
