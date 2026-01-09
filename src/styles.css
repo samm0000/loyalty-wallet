@@ -1,28 +1,28 @@
 :root{
   --bg:#0b1220;
+  --panel:rgba(255,255,255,.06);
+  --panel2:rgba(255,255,255,.04);
   --text:#e8eefc;
   --muted:#a9b7d6;
   --accent:#1976d2;
-  --border:rgba(255,255,255,.10);
+  --border:rgba(255,255,255,.12);
+  --danger:rgba(255,80,80,.22);
+  --dangerBorder:rgba(255,80,80,.45);
 }
 
-* {
-  box-sizing: border-box;
-}
+*{ box-sizing:border-box; }
 
-body {
-  margin: 0;
-  background: #0b1220;
-  color: #ffffff;
-}
+html, body { height:100%; }
 
-.app {
-  position: relative;
-  z-index: 1;
-  min-height: 100vh;
-  padding-bottom: 80px;
+body{
+  margin:0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background:
+    radial-gradient(1200px 800px at 20% 0%, rgba(25,118,210,.35), transparent 55%),
+    radial-gradient(1200px 800px at 80% 20%, rgba(0,200,150,.18), transparent 55%),
+    var(--bg);
+  color:var(--text);
 }
-
 
 /* Layout */
 .app{
@@ -39,6 +39,7 @@ body {
   font-size:26px;
   font-weight:900;
   letter-spacing:.2px;
+  color:var(--text);
 }
 
 .subtitle{
@@ -55,7 +56,7 @@ body {
 
 /* Cards */
 .card{
-  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+  background: linear-gradient(180deg, var(--panel), var(--panel2));
   border:1px solid var(--border);
   border-radius:18px;
   padding:16px;
@@ -65,9 +66,10 @@ body {
 .card h2{
   margin:0 0 10px;
   font-size:18px;
+  color:var(--text);
 }
 
-/* Text */
+/* Text helpers */
 .muted{ color:var(--muted); }
 
 .small{
@@ -81,15 +83,14 @@ body {
   width:100%;
   border-radius:14px;
   border:1px solid var(--border);
-  background:rgba(255,255,255,.06);
+  background:rgba(255,255,255,.08);
   color:var(--text);
   padding:12px 14px;
   font-weight:700;
   outline:none;
 }
-
 .input::placeholder{
-  color: rgba(169,183,214,.8);
+  color: rgba(169,183,214,.85);
 }
 
 /* Buttons */
@@ -109,21 +110,20 @@ button{
 }
 
 .ghost{
-  background:rgba(255,255,255,.08);
+  background:rgba(255,255,255,.10);
   color:var(--text);
 }
 
 .danger{
-  background:rgba(255,80,80,.18);
+  background:var(--danger);
   color:#ffd0d0;
-  border:1px solid rgba(255,80,80,.35);
+  border:1px solid var(--dangerBorder);
 }
 
 .btnRow{
   display:flex;
   gap:10px;
 }
-
 .btnRow button{
   flex:1;
 }
@@ -159,6 +159,7 @@ button{
 
 .name{
   font-weight:900;
+  color:var(--text);
 }
 
 .meta{
@@ -187,7 +188,8 @@ button{
   border:1px dashed var(--border);
   overflow:auto;
   word-break:break-all;
-  background: rgba(255,255,255,.04);
+  background: rgba(255,255,255,.06);
+  color:var(--text);
 }
 
 /* Popup / Sheet */
@@ -221,6 +223,7 @@ button{
 .sheetTitle{
   font-size:18px;
   font-weight:900;
+  color:var(--text);
 }
 
 .sheetSub{
@@ -249,8 +252,4 @@ button{
   width:100%;
   max-width:520px;
   height:140px;
-}
-
-.center{
-  text-align:center;
 }
