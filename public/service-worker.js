@@ -4,8 +4,10 @@ const DYNAMIC_CACHE = 'dynamic-v1';
 
 const STATIC_ASSETS = [
   '/',
-  '/index.html',
-  '/manifest.json'
+  '/manifest.json',
+  '/service-worker.js',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png'
 ];
 
 // Install event
