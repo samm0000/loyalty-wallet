@@ -9,7 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.49.0",
     "@zxing/browser": "^0.1.5",
+    "framer-motion": "^11.3.21",
     "idb": "^8.0.0",
     "jsbarcode": "^3.11.6",
     "qrcode": "^1.5.4",
