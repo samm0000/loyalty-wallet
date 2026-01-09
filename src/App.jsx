@@ -9,9 +9,8 @@ function uid() {
   return crypto.randomUUID?.() ?? String(Date.now());
 }
 
-/** Retailer list (mix: loyalty + common “online accounts” as labels) */
+/** Retailers we can detect (extendable) */
 const RETAILERS = [
-  // Supermarkets / drugstores / retail
   "Lidl",
   "Aldi",
   "Kaufland",
@@ -34,8 +33,6 @@ const RETAILERS = [
   "MediaMarkt",
   "Saturn",
   "Douglas",
-
-  // “Online / accounts” (je kunt zelf QR/barcode/text opslaan)
   "Amazon",
   "PayPal",
   "Google",
@@ -46,19 +43,15 @@ const RETAILERS = [
   "Airbnb",
   "Netflix",
   "Spotify",
-
-  // Shipping / services
   "DHL",
   "GLS",
   "DPD",
   "PostNL",
   "Deutsche Post",
-
-  // Other
   "Other"
 ];
 
-/** Country list (brede lijst zodat je “alle landen” hebt) */
+/** Countries list (same as earlier, shortened a bit is fine — keep as you like) */
 const COUNTRIES = [
   { code: "NL", name: "Netherlands" },
   { code: "DE", name: "Germany" },
@@ -85,48 +78,22 @@ const COUNTRIES = [
   { code: "RO", name: "Romania" },
   { code: "BG", name: "Bulgaria" },
   { code: "GR", name: "Greece" },
-  { code: "CY", name: "Cyprus" },
-  { code: "MT", name: "Malta" },
-  { code: "LT", name: "Lithuania" },
-  { code: "LV", name: "Latvia" },
-  { code: "EE", name: "Estonia" },
   { code: "RS", name: "Serbia" },
   { code: "BA", name: "Bosnia and Herzegovina" },
   { code: "ME", name: "Montenegro" },
   { code: "MK", name: "North Macedonia" },
   { code: "AL", name: "Albania" },
-  { code: "XK", name: "Kosovo" },
   { code: "TR", name: "Türkiye" },
   { code: "US", name: "United States" },
   { code: "CA", name: "Canada" },
-  { code: "MX", name: "Mexico" },
-  { code: "BR", name: "Brazil" },
-  { code: "AR", name: "Argentina" },
-  { code: "CL", name: "Chile" },
-  { code: "AU", name: "Australia" },
-  { code: "NZ", name: "New Zealand" },
-  { code: "AE", name: "United Arab Emirates" },
-  { code: "SA", name: "Saudi Arabia" },
-  { code: "QA", name: "Qatar" },
-  { code: "IL", name: "Israel" },
-  { code: "EG", name: "Egypt" },
-  { code: "MA", name: "Morocco" },
-  { code: "TN", name: "Tunisia" },
-  { code: "ZA", name: "South Africa" },
-  { code: "IN", name: "India" },
-  { code: "CN", name: "China" },
-  { code: "JP", name: "Japan" },
-  { code: "KR", name: "South Korea" },
-  { code: "SG", name: "Singapore" },
-  { code: "ID", name: "Indonesia" },
-  { code: "TH", name: "Thailand" },
-  { code: "VN", name: "Vietnam" }
+  { code: "AU", name: "Australia" }
 ];
 
 function countryName(code) {
   return COUNTRIES.find((c) => c.code === code)?.name || code || "—";
 }
 
+/** If QR format, or if value is not strictly digits (simple heuristic) */
 function isQr(zxingFormat, value) {
   if (zxingFormat === "QR_CODE") return true;
   return !/^\d+$/.test((value || "").trim());
@@ -153,10 +120,140 @@ function toJsBarcodeFormat(zxingFormat, value) {
   }
 }
 
+/** Locale → default country guess */
+function guessCountryFromLocale() {
+  try {
+    const loc = Intl.DateTimeFormat().resolvedOptions().locale || "";
+    const m = loc.match(/-([A-Z]{2})\b/);
+    if (m?.[1]) return m[1];
+  } catch {}
+  return "DE"; // fallback
+}
+
+/** Map TLD to country */
+const TLD_TO_COUNTRY = {
+  de: "DE",
+  nl: "NL",
+  be: "BE",
+  fr: "FR",
+  it: "IT",
+  es: "ES",
+  pt: "PT",
+  at: "AT",
+  ch: "CH",
+  dk: "DK",
+  se: "SE",
+  no: "NO",
+  fi: "FI",
+  ie: "IE",
+  uk: "GB",
+  pl: "PL",
+  cz: "CZ",
+  sk: "SK",
+  hu: "HU",
+  si: "SI",
+  hr: "HR",
+  ro: "RO",
+  bg: "BG",
+  gr: "GR",
+  rs: "RS",
+  ba: "BA",
+  me: "ME",
+  mk: "MK",
+  al: "AL",
+  tr: "TR",
+  com: null,
+  org: null,
+  net: null
+};
+
+/** Retailer detection from host/keywords */
+function guessRetailerFromText(text) {
+  const s = (text || "").toLowerCase();
+
+  // Lidl
+  if (s.includes("lidl")) return "Lidl";
+  // Aldi
+  if (s.includes("aldi")) return "Aldi";
+  // dm / Rossmann
+  if (s.includes("dm.de") || s.includes("dm-drogerie") || s.includes("dm.at")) return "dm";
+  if (s.includes("rossmann")) return "Rossmann";
+  // Amazon
+  if (s.includes("amazon.")) return "Amazon";
+  // PayPal
+  if (s.includes("paypal." ) || s.includes("paypalme") || s.includes("paypal.me")) return "PayPal";
+  // Booking / Airbnb
+  if (s.includes("booking.")) return "Booking";
+  if (s.includes("airbnb.")) return "Airbnb";
+  // Post / shipping
+  if (s.includes("dhl.")) return "DHL";
+  if (s.includes("dpd.")) return "DPD";
+  if (s.includes("gls.")) return "GLS";
+  if (s.includes("postnl.")) return "PostNL";
+  if (s.includes("deutschepost") || s.includes("dhl.de")) return "Deutsche Post";
+
+  // fallback
+  return "Other";
+}
+
+/** Country guess from URL host / TLD */
+function guessCountryFromUrl(urlString) {
+  try {
+    const u = new URL(urlString);
+    const host = u.hostname.toLowerCase();
+    const parts = host.split(".");
+    const tld = parts[parts.length - 1];
+    const mapped = TLD_TO_COUNTRY[tld];
+    if (mapped) return mapped;
+
+    // Some domains like lidl.de (tld de already handled)
+    // Some might have country in path/query, simple attempts:
+    if (host.includes(".de")) return "DE";
+    if (host.includes(".nl")) return "NL";
+    if (host.includes(".rs")) return "RS";
+  } catch {}
+  return null;
+}
+
+/** Detect everything we can from scanned/manual value */
+function autoDetectFromValue(value, zxingFormat) {
+  const v = String(value || "").trim();
+
+  let country = guessCountryFromLocale();
+  let retailer = "Other";
+  let format = zxingFormat || "";
+
+  // If looks like URL → strong detection
+  const looksUrl = /^https?:\/\/|^www\./i.test(v);
+  if (looksUrl) {
+    const normalized = v.startsWith("http") ? v : `https://${v}`;
+    const c = guessCountryFromUrl(normalized);
+    if (c) country = c;
+
+    retailer = guessRetailerFromText(normalized);
+    format = "QR_CODE"; // treat URLs as QR
+  } else {
+    // Non-url: try keyword detection anyway (some QR payloads are text)
+    retailer = guessRetailerFromText(v);
+
+    // If ZXing gave a format, keep it; else guess based on digits length
+    if (!format) {
+      if (/^\d{13}$/.test(v)) format = "EAN_13";
+      else if (/^\d{8}$/.test(v)) format = "EAN_8";
+      else if (/^\d+$/.test(v)) format = "CODE_128";
+      else format = "QR_CODE";
+    }
+  }
+
+  // nickname suggestion
+  const nickname = retailer === "Other" ? "Nieuwe kaart" : `${retailer} kaart`;
+
+  return { retailer, country, format, nickname };
+}
+
 export default function App() {
   const reader = useMemo(() => new BrowserMultiFormatReader(), []);
   const scanControlsRef = useRef(null);
-
   const barcodeRef = useRef(null);
 
   const [session, setSession] = useState(null);
@@ -166,20 +263,26 @@ export default function App() {
 
   const [cards, setCards] = useState([]);
 
-  // Add flow state
+  // Add flow
   const [addOpen, setAddOpen] = useState(false);
   const [scanning, setScanning] = useState(false);
-  const [manualValue, setManualValue] = useState("");
-  const [manualFormat, setManualFormat] = useState("QR_CODE");
 
-  const [retailer, setRetailer] = useState("Lidl");
-  const [country, setCountry] = useState("DE");
-  const [retailerSearch, setRetailerSearch] = useState("");
-  const [countrySearch, setCountrySearch] = useState("");
+  const [valueDraft, setValueDraft] = useState("");
+  const [formatDraft, setFormatDraft] = useState("QR_CODE");
+
+  // Auto-detected / editable metadata for new card
+  const [retailerDraft, setRetailerDraft] = useState("Other");
+  const [countryDraft, setCountryDraft] = useState(guessCountryFromLocale());
+  const [nicknameDraft, setNicknameDraft] = useState("Nieuwe kaart");
 
   // Popup usage
   const [selected, setSelected] = useState(null);
   const [qrDataUrl, setQrDataUrl] = useState("");
+
+  // Filters
+  const [filterRetailer, setFilterRetailer] = useState("All");
+  const [filterCountry, setFilterCountry] = useState("All");
+  const [search, setSearch] = useState("");
 
   // Register SW
   useEffect(() => {
@@ -197,7 +300,6 @@ export default function App() {
 
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const { data: sub } = supabase.auth.onAuthStateChange((_evt, s) => setSession(s));
-
     return () => sub?.subscription?.unsubscribe?.();
   }, []);
 
@@ -243,9 +345,37 @@ export default function App() {
     setScanning(false);
   }
 
+  function resetAddDraft() {
+    setValueDraft("");
+    const defCountry = guessCountryFromLocale();
+    setCountryDraft(defCountry);
+    setRetailerDraft("Other");
+    setFormatDraft("QR_CODE");
+    setNicknameDraft("Nieuwe kaart");
+  }
+
+  function openAdd() {
+    resetAddDraft();
+    setAddOpen(true);
+  }
+
+  function closeAdd() {
+    stopScan();
+    setAddOpen(false);
+  }
+
+  function applyAutoDetect(value, fmt) {
+    const detected = autoDetectFromValue(value, fmt);
+    setRetailerDraft(detected.retailer);
+    setCountryDraft(detected.country);
+    setFormatDraft(detected.format || fmt || "QR_CODE");
+    setNicknameDraft(detected.nickname);
+  }
+
   async function startScan() {
     stopScan();
     setScanning(true);
+
     await new Promise((r) => requestAnimationFrame(r));
 
     try {
@@ -256,63 +386,49 @@ export default function App() {
 
         if (!value) return;
 
-        try {
-          controls?.stop();
-        } catch {}
+        // stop immediately
+        try { controls?.stop(); } catch {}
         scanControlsRef.current = null;
-
-        try {
-          reader.reset();
-        } catch {}
-
+        try { reader.reset(); } catch {}
         setScanning(false);
 
-        const nickname = prompt("Kaartnaam (bijv. Lidl Plus / PayPal / …):", retailer);
-        if (!nickname) return;
-
-        const newCard = {
-          id: uid(),
-          retailer,
-          country,
-          nickname: nickname.trim(),
-          value,
-          format,
-          createdAt: Date.now(),
-          updatedAt: Date.now()
-        };
-
-        setCards((prev) => [newCard, ...prev]);
-        setAddOpen(false);
+        // Auto-detect and fill fields
+        setValueDraft(value);
+        applyAutoDetect(value, format);
       });
 
       scanControlsRef.current = controls;
-    } catch (e) {
+    } catch {
       stopScan();
       alert("Scanner kon niet starten. Camera-toestemming ok? Probeer opnieuw.");
     }
   }
 
-  function addManual() {
-    const value = (manualValue || "").trim();
-    if (!value) return;
+  function onManualValueChange(v) {
+    setValueDraft(v);
+    // Auto-detect live while typing/pasting
+    if (v.trim().length > 0) {
+      applyAutoDetect(v, formatDraft);
+    }
+  }
 
-    const nickname = prompt("Kaartnaam (bijv. Lidl Plus / PayPal / …):", retailer);
-    if (!nickname) return;
+  function saveCard() {
+    const value = valueDraft.trim();
+    if (!value) return;
 
     const newCard = {
       id: uid(),
-      retailer,
-      country,
-      nickname: nickname.trim(),
+      retailer: retailerDraft || "Other",
+      country: countryDraft || guessCountryFromLocale(),
+      nickname: (nicknameDraft || "Nieuwe kaart").trim(),
       value,
-      format: manualFormat,
+      format: formatDraft || "QR_CODE",
       createdAt: Date.now(),
       updatedAt: Date.now()
     };
 
     setCards((prev) => [newCard, ...prev]);
-    setManualValue("");
-    setAddOpen(false);
+    closeAdd();
   }
 
   function removeCard(id) {
@@ -423,11 +539,6 @@ export default function App() {
     }
   }
 
-  // Filters
-  const [filterRetailer, setFilterRetailer] = useState("All");
-  const [filterCountry, setFilterCountry] = useState("All");
-  const [search, setSearch] = useState("");
-
   const filteredCards = cards.filter((c) => {
     if (filterRetailer !== "All" && c.retailer !== filterRetailer) return false;
     if (filterCountry !== "All" && c.country !== filterCountry) return false;
@@ -438,14 +549,6 @@ export default function App() {
     }
     return true;
   });
-
-  const retailerOptions = RETAILERS.filter((r) =>
-    r.toLowerCase().includes(retailerSearch.trim().toLowerCase())
-  );
-
-  const countryOptions = COUNTRIES.filter((c) =>
-    `${c.code} ${c.name}`.toLowerCase().includes(countrySearch.trim().toLowerCase())
-  );
 
   return (
     <div className="app">
@@ -491,12 +594,8 @@ export default function App() {
                 Ingelogd als: <b>{session.user.email}</b>
               </p>
               <div className="btnRow">
-                <button className="primary" onClick={syncToCloud}>
-                  Sync nu
-                </button>
-                <button className="ghost" onClick={signOut}>
-                  Logout
-                </button>
+                <button className="primary" onClick={syncToCloud}>Sync nu</button>
+                <button className="ghost" onClick={signOut}>Logout</button>
               </div>
               {syncInfo && <p className="small">{syncInfo}</p>}
             </>
@@ -505,11 +604,9 @@ export default function App() {
 
         <section className="card">
           <h2>Kaart toevoegen</h2>
-          <button className="primary" onClick={() => setAddOpen(true)}>
-            ➕ Add card
-          </button>
+          <button className="primary" onClick={openAdd}>➕ Add card</button>
           <p className="small">
-            Kies retailer + land. Daarna scan je barcode/QR (of voeg handmatig toe).
+            Scan of plak een code. We proberen automatisch retailer + land te herkennen.
           </p>
         </section>
 
@@ -524,30 +621,13 @@ export default function App() {
               onChange={(e) => setSearch(e.target.value)}
             />
             <div className="filterRow">
-              <select
-                className="select"
-                value={filterRetailer}
-                onChange={(e) => setFilterRetailer(e.target.value)}
-              >
+              <select className="select" value={filterRetailer} onChange={(e) => setFilterRetailer(e.target.value)}>
                 <option value="All">Alle retailers</option>
-                {RETAILERS.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
+                {RETAILERS.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
-
-              <select
-                className="select"
-                value={filterCountry}
-                onChange={(e) => setFilterCountry(e.target.value)}
-              >
+              <select className="select" value={filterCountry} onChange={(e) => setFilterCountry(e.target.value)}>
                 <option value="All">Alle landen</option>
-                {COUNTRIES.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.code} — {c.name}
-                  </option>
-                ))}
+                {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.code} — {c.name}</option>)}
               </select>
             </div>
           </div>
@@ -564,23 +644,16 @@ export default function App() {
                       {c.retailer} • {c.country} ({countryName(c.country)}) • {c.format || "—"}
                     </div>
                   </div>
-
                   <div className="actions">
                     <button
                       className="ghost"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigator.clipboard?.writeText(c.value);
-                      }}
+                      onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(c.value); }}
                     >
                       Kopieer
                     </button>
                     <button
                       className="danger"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeCard(c.id);
-                      }}
+                      onClick={(e) => { e.stopPropagation(); removeCard(c.id); }}
                     >
                       Verwijder
                     </button>
@@ -597,16 +670,7 @@ export default function App() {
       {/* Add Card Modal */}
       <AnimatePresence>
         {addOpen && (
-          <motion.div
-            className="overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => {
-              stopScan();
-              setAddOpen(false);
-            }}
-          >
+          <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={closeAdd}>
             <motion.div
               className="sheet"
               initial={{ y: 40, scale: 0.98, opacity: 0 }}
@@ -618,119 +682,83 @@ export default function App() {
               <div className="sheetTop">
                 <div>
                   <div className="sheetTitle">Add card</div>
-                  <div className="sheetSub">Kies retailer + land, scan of voeg handmatig toe</div>
+                  <div className="sheetSub">Scan of plak een code — velden vullen automatisch</div>
                 </div>
-                <button
-                  className="ghost"
-                  style={{ width: "auto" }}
-                  onClick={() => {
-                    stopScan();
-                    setAddOpen(false);
-                  }}
-                >
-                  Sluiten
-                </button>
+                <button className="ghost" style={{ width: "auto" }} onClick={closeAdd}>Sluiten</button>
               </div>
-
-              <div className="grid2">
-                <div>
-                  <div className="label">Retailer</div>
-                  <input
-                    className="input"
-                    placeholder="Zoek retailer…"
-                    value={retailerSearch}
-                    onChange={(e) => setRetailerSearch(e.target.value)}
-                  />
-                  <select
-                    className="select"
-                    value={retailer}
-                    onChange={(e) => setRetailer(e.target.value)}
-                  >
-                    {retailerOptions.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <div className="label">Land</div>
-                  <input
-                    className="input"
-                    placeholder="Zoek land/code…"
-                    value={countrySearch}
-                    onChange={(e) => setCountrySearch(e.target.value)}
-                  />
-                  <select
-                    className="select"
-                    value={country}
-                    onChange={(e) => setCountry(e.target.value)}
-                  >
-                    {countryOptions.map((c) => (
-                      <option key={c.code} value={c.code}>
-                        {c.code} — {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div style={{ height: 10 }} />
 
               {!scanning ? (
                 <div className="btnRow">
-                  <button className="primary" onClick={startScan}>
-                    📷 Scan barcode/QR
-                  </button>
-                  <button
-                    className="ghost"
-                    onClick={() => {
-                      setScanning(false);
-                      setManualValue("");
-                    }}
-                  >
-                    Handmatig
-                  </button>
+                  <button className="primary" onClick={startScan}>📷 Scan barcode/QR</button>
+                  <button className="ghost" onClick={() => setScanning(false)}>Handmatig</button>
                 </div>
               ) : (
                 <>
                   <video id="video" className="video" />
                   <div style={{ height: 10 }} />
-                  <button className="ghost" onClick={stopScan}>
-                    Stop
-                  </button>
-                  <p className="small">
-                    Richt de camera op de barcode/QR. Goede belichting + stilhouden helpt enorm.
-                  </p>
+                  <button className="ghost" onClick={stopScan}>Stop</button>
+                  <p className="small">Richt op barcode/QR. Goede belichting + stilhouden helpt.</p>
                 </>
               )}
 
               <div style={{ height: 14 }} />
 
-              <div className="label">Handmatig toevoegen</div>
-              <select
-                className="select"
-                value={manualFormat}
-                onChange={(e) => setManualFormat(e.target.value)}
-              >
-                <option value="QR_CODE">QR (tekst/URL)</option>
-                <option value="CODE_128">Barcode (CODE128)</option>
-                <option value="EAN_13">EAN-13</option>
-                <option value="EAN_8">EAN-8</option>
-                <option value="CODE_39">CODE39</option>
-              </select>
-
+              <div className="label">Code / tekst</div>
               <input
                 className="input"
-                placeholder="Plak code/tekst hier…"
-                value={manualValue}
-                onChange={(e) => setManualValue(e.target.value)}
+                placeholder="Plak hier de code/URL…"
+                value={valueDraft}
+                onChange={(e) => onManualValueChange(e.target.value)}
               />
+
+              <div className="grid2">
+                <div>
+                  <div className="label">Retailer (auto)</div>
+                  <select className="select" value={retailerDraft} onChange={(e) => setRetailerDraft(e.target.value)}>
+                    {RETAILERS.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <div className="label">Land (auto)</div>
+                  <select className="select" value={countryDraft} onChange={(e) => setCountryDraft(e.target.value)}>
+                    {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.code} — {c.name}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid2">
+                <div>
+                  <div className="label">Format (auto)</div>
+                  <select className="select" value={formatDraft} onChange={(e) => { setFormatDraft(e.target.value); applyAutoDetect(valueDraft, e.target.value); }}>
+                    <option value="QR_CODE">QR (tekst/URL)</option>
+                    <option value="CODE_128">Barcode (CODE128)</option>
+                    <option value="EAN_13">EAN-13</option>
+                    <option value="EAN_8">EAN-8</option>
+                    <option value="CODE_39">CODE39</option>
+                    <option value="ITF">ITF</option>
+                  </select>
+                </div>
+
+                <div>
+                  <div className="label">Kaartnaam (auto)</div>
+                  <input
+                    className="input"
+                    value={nicknameDraft}
+                    onChange={(e) => setNicknameDraft(e.target.value)}
+                    placeholder="Bijv. Lidl Plus"
+                  />
+                </div>
+              </div>
+
               <div style={{ height: 10 }} />
-              <button className="primary" onClick={addManual} disabled={!manualValue.trim()}>
+              <button className="primary" onClick={saveCard} disabled={!valueDraft.trim()}>
                 Opslaan
               </button>
+
+              <p className="small">
+                Let op: retailer/land zijn soms niet betrouwbaar uit barcodes te halen. Je kunt ze hierboven aanpassen.
+              </p>
             </motion.div>
           </motion.div>
         )}
@@ -739,13 +767,7 @@ export default function App() {
       {/* Use Card Popup */}
       <AnimatePresence>
         {selected && (
-          <motion.div
-            className="overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={closePopup}
-          >
+          <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={closePopup}>
             <motion.div
               className="sheet"
               initial={{ y: 40, scale: 0.98, opacity: 0 }}
@@ -761,9 +783,7 @@ export default function App() {
                     {selected.retailer} • {selected.country} ({countryName(selected.country)})
                   </div>
                 </div>
-                <button className="ghost" style={{ width: "auto" }} onClick={closePopup}>
-                  Sluiten
-                </button>
+                <button className="ghost" style={{ width: "auto" }} onClick={closePopup}>Sluiten</button>
               </div>
 
               <div className="codeBox">
