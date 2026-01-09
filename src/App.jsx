@@ -3,7 +3,7 @@ import { BrowserMultiFormatReader } from "@zxing/browser";
 import QRCode from "qrcode";
 import JsBarcode from "jsbarcode";
 import { AnimatePresence, motion } from "framer-motion";
-import { supabase } from "./supabase";
+import { supabase, supabaseConfigOk } from "./supabase";
 
 function uid() {
   return crypto.randomUUID?.() ?? String(Date.now());
@@ -16,18 +16,12 @@ function isQr(zxingFormat, value) {
 
 function toJsBarcodeFormat(zxingFormat, value) {
   switch (zxingFormat) {
-    case "EAN_13":
-      return "EAN13";
-    case "EAN_8":
-      return "EAN8";
-    case "CODE_128":
-      return "CODE128";
-    case "CODE_39":
-      return "CODE39";
-    case "ITF":
-      return "ITF";
-    case "UPC_A":
-      return "UPC";
+    case "EAN_13": return "EAN13";
+    case "EAN_8": return "EAN8";
+    case "CODE_128": return "CODE128";
+    case "CODE_39": return "CODE39";
+    case "ITF": return "ITF";
+    case "UPC_A": return "UPC";
     default:
       if (/^\d{13}$/.test(value)) return "EAN13";
       if (/^\d{8}$/.test(value)) return "EAN8";
@@ -63,6 +57,8 @@ export default function App() {
     const local = JSON.parse(localStorage.getItem("cards") || "[]");
     setCards(local);
 
+    if (!supabase) return;
+
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const { data: sub } = supabase.auth.onAuthStateChange((_evt, s) => {
       setSession(s);
@@ -76,7 +72,7 @@ export default function App() {
     localStorage.setItem("cards", JSON.stringify(cards));
   }, [cards]);
 
-  // Render QR or barcode when a card is selected
+  // Render QR or barcode when selected
   useEffect(() => {
     (async () => {
       if (!selected) return;
@@ -103,9 +99,12 @@ export default function App() {
     })();
   }, [selected]);
 
-  // Auth (magic link)
   async function signInMagicLink() {
     setAuthInfo("");
+    if (!supabase) {
+      setAuthInfo("Supabase is niet geconfigureerd (Vercel env vars ontbreken).");
+      return;
+    }
     if (!email.trim()) return;
 
     const { error } = await supabase.auth.signInWithOtp({
@@ -113,26 +112,23 @@ export default function App() {
       options: { emailRedirectTo: window.location.origin }
     });
 
-    if (error) {
-      setAuthInfo("Login mislukt: " + error.message);
-    } else {
-      setAuthInfo("Check je e-mail voor de magic link. Open die op dezelfde iPhone.");
-    }
+    if (error) setAuthInfo("Login mislukt: " + error.message);
+    else setAuthInfo("Check je e-mail voor de magic link. Open die op dezelfde iPhone.");
   }
 
   async function signOut() {
+    if (!supabase) return;
     await supabase.auth.signOut();
     setSyncInfo("");
   }
 
-  // Scan
   async function startScan() {
     setScanning(true);
     setSyncInfo("");
     try {
       const result = await reader.decodeOnceFromVideoDevice(undefined, "video");
       const value = result.getText();
-      const format = String(result.getBarcodeFormat()); // EAN_13, QR_CODE, CODE_128, etc.
+      const format = String(result.getBarcodeFormat());
 
       reader.reset();
       setScanning(false);
@@ -149,12 +145,11 @@ export default function App() {
         updatedAt: Date.now()
       };
 
-      // LET OP: geen auto-open popup (jij wilde de optionele optie weg)
       setCards((prev) => [newCard, ...prev]);
-    } catch (e) {
+    } catch {
       reader.reset();
       setScanning(false);
-      alert("Scannen gestopt of geen toegang tot camera. Probeer opnieuw en geef camera-toestemming.");
+      alert("Scannen gestopt of geen camera-toestemming. Probeer opnieuw.");
     }
   }
 
@@ -170,9 +165,12 @@ export default function App() {
     if (selected?.id === id) setSelected(null);
   }
 
-  // Cloud sync (merge + upsert)
   async function syncToCloud() {
     setSyncInfo("");
+    if (!supabase) {
+      setSyncInfo("Supabase env vars ontbreken in Vercel.");
+      return;
+    }
     if (!session?.user?.id) {
       setSyncInfo("Log eerst in om te syncen.");
       return;
@@ -182,7 +180,6 @@ export default function App() {
       setSyncInfo("Sync bezig…");
       const userId = session.user.id;
 
-      // Pull cloud
       const { data: cloud, error: pullErr } = await supabase
         .from("cards")
         .select("*")
@@ -199,7 +196,6 @@ export default function App() {
         updatedAt: new Date(c.updated_at).getTime()
       }));
 
-      // Merge by updatedAt
       const merged = new Map();
       for (const c of cards) merged.set(c.id, c);
       for (const c of cloudAsLocal) {
@@ -214,7 +210,6 @@ export default function App() {
 
       setCards(mergedArr);
 
-      // Push merged
       const payload = mergedArr.map((c) => ({
         id: c.id,
         user_id: userId,
@@ -223,10 +218,7 @@ export default function App() {
         format: c.format || ""
       }));
 
-      const { error: pushErr } = await supabase
-        .from("cards")
-        .upsert(payload, { onConflict: "id" });
-
+      const { error: pushErr } = await supabase.from("cards").upsert(payload, { onConflict: "id" });
       if (pushErr) throw pushErr;
 
       setSyncInfo("Sync klaar ✅");
@@ -252,15 +244,26 @@ export default function App() {
       </header>
 
       <main className="content">
+        {/* Supabase warning */}
+        {!supabaseConfigOk && (
+          <section className="card">
+            <h2>Supabase niet ingesteld</h2>
+            <p className="small">
+              Voeg in Vercel → Project → Settings → Environment Variables toe:
+              <br />• <b>VITE_SUPABASE_URL</b>
+              <br />• <b>VITE_SUPABASE_ANON_KEY</b>
+              <br />Daarna Redeploy.
+            </p>
+          </section>
+        )}
+
         {/* AUTH + SYNC */}
         <section className="card">
           <h2>Cloud Sync (Supabase)</h2>
 
           {!session ? (
             <>
-              <p className="small">
-                Log in met e-mail (magic link) om je kaarten te synchroniseren.
-              </p>
+              <p className="small">Log in met e-mail (magic link) om te synchroniseren.</p>
               <input
                 className="input"
                 placeholder="jouw@email.com"
@@ -269,7 +272,7 @@ export default function App() {
                 inputMode="email"
               />
               <div style={{ height: 10 }} />
-              <button className="primary" onClick={signInMagicLink}>
+              <button className="primary" onClick={signInMagicLink} disabled={!supabase}>
                 Login via magic link
               </button>
               {authInfo && <p className="small">{authInfo}</p>}
@@ -302,9 +305,7 @@ export default function App() {
             </>
           )}
 
-          <p className="small">
-            Tip: zet je schermhelderheid hoog voor sneller scannen bij de kassa.
-          </p>
+          <p className="small">Tip: zet je schermhelderheid hoog voor sneller scannen.</p>
         </section>
 
         {/* CARDS */}
@@ -312,7 +313,7 @@ export default function App() {
           <h2>Mijn kaarten</h2>
 
           {cards.length === 0 ? (
-            <p className="muted">Nog geen kaarten. Scan er één 😊</p>
+            <p className="muted">Nog geen kaarten. Scan er één.</p>
           ) : (
             <div className="list">
               {cards.map((c) => (
@@ -351,18 +352,7 @@ export default function App() {
             </div>
           )}
 
-          <p className="small">
-            Tik op een kaart → popup opent met barcode/QR om te scannen in de winkel.
-          </p>
-        </section>
-
-        {/* iPhone note */}
-        <section className="card">
-          <h2>iPhone tip</h2>
-          <p className="small">
-            iOS houdt je scherm niet altijd “wakker” via web. Zet eventueel tijdelijk
-            “Automatische vergrendeling” langer (Instellingen → Scherm en helderheid).
-          </p>
+          <p className="small">Tik op een kaart → popup opent om in de winkel te scannen.</p>
         </section>
       </main>
 
@@ -391,11 +381,7 @@ export default function App() {
                     Laat dit aan de kassa scannen • Format: {selected.format || "onbekend"}
                   </div>
                 </div>
-                <button
-                  className="ghost"
-                  style={{ width: "auto" }}
-                  onClick={closePopup}
-                >
+                <button className="ghost" style={{ width: "auto" }} onClick={closePopup}>
                   Sluiten
                 </button>
               </div>
@@ -410,12 +396,6 @@ export default function App() {
 
               <div style={{ height: 10 }} />
               <div className="codeMono">{selected.value}</div>
-
-              <div className="center" style={{ marginTop: 10 }}>
-                <div className="small">
-                  Tip: zet je schermhelderheid hoog voor sneller scannen.
-                </div>
-              </div>
             </motion.div>
           </motion.div>
         )}
