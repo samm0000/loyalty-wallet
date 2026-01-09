@@ -1,13 +1,11 @@
 const CACHE_NAME = "lw-v1";
 const CORE = ["/", "/manifest.json"];
 
-// Install
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((c) => c.addAll(CORE)));
   self.skipWaiting();
 });
 
-// Activate
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
@@ -17,17 +15,14 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Fetch: ONLY handle navigation requests (HTML). Let assets pass through.
+// Only cache navigation (HTML). Let JS/CSS load normally.
 self.addEventListener("fetch", (event) => {
   const req = event.request;
-
-  // Only for page navigation
   if (req.mode === "navigate") {
     event.respondWith(
       fetch(req).catch(async () => {
         const cache = await caches.open(CACHE_NAME);
-        const cached = await cache.match("/");
-        return cached || new Response("Offline", { status: 200 });
+        return (await cache.match("/")) || new Response("Offline", { status: 200 });
       })
     );
   }

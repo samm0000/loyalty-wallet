@@ -2,7 +2,6 @@
   "name": "Loyalty Wallet",
   "short_name": "Wallet",
   "start_url": "/",
-  "scope": "/",
   "display": "standalone",
   "background_color": "#0b1220",
   "theme_color": "#1976d2",
