@@ -11,17 +11,24 @@ function uid() {
 
 function isQr(zxingFormat, value) {
   if (zxingFormat === "QR_CODE") return true;
+  // simpele heuristiek: als het niet puur cijfers is, meestal QR/tekst
   return !/^\d+$/.test((value || "").trim());
 }
 
 function toJsBarcodeFormat(zxingFormat, value) {
   switch (zxingFormat) {
-    case "EAN_13": return "EAN13";
-    case "EAN_8": return "EAN8";
-    case "CODE_128": return "CODE128";
-    case "CODE_39": return "CODE39";
-    case "ITF": return "ITF";
-    case "UPC_A": return "UPC";
+    case "EAN_13":
+      return "EAN13";
+    case "EAN_8":
+      return "EAN8";
+    case "CODE_128":
+      return "CODE128";
+    case "CODE_39":
+      return "CODE39";
+    case "ITF":
+      return "ITF";
+    case "UPC_A":
+      return "UPC";
     default:
       if (/^\d{13}$/.test(value)) return "EAN13";
       if (/^\d{8}$/.test(value)) return "EAN8";
@@ -32,6 +39,9 @@ function toJsBarcodeFormat(zxingFormat, value) {
 export default function App() {
   const reader = useMemo(() => new BrowserMultiFormatReader(), []);
   const barcodeRef = useRef(null);
+
+  // Controls om scan altijd te kunnen stoppen (werkt beter dan decodeOnce)
+  const scanControlsRef = useRef(null);
 
   const [session, setSession] = useState(null);
   const [email, setEmail] = useState("");
@@ -65,12 +75,27 @@ export default function App() {
     });
 
     return () => sub?.subscription?.unsubscribe?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Persist local
   useEffect(() => {
     localStorage.setItem("cards", JSON.stringify(cards));
   }, [cards]);
+
+  // Cleanup scan on unmount
+  useEffect(() => {
+    return () => {
+      try {
+        scanControlsRef.current?.stop();
+      } catch {}
+      scanControlsRef.current = null;
+      try {
+        reader.reset();
+      } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Render QR or barcode when selected
   useEffect(() => {
@@ -99,6 +124,85 @@ export default function App() {
     })();
   }, [selected]);
 
+  function stopScan() {
+    try {
+      scanControlsRef.current?.stop();
+    } catch {}
+    scanControlsRef.current = null;
+
+    try {
+      reader.reset();
+    } catch {}
+
+    setScanning(false);
+  }
+
+  async function startScan() {
+    // Als er al een scan loopt: eerst stoppen
+    stopScan();
+
+    setScanning(true);
+    setSyncInfo("");
+
+    // Wacht 1 frame zodat <video id="video"> zeker in DOM zit
+    await new Promise((r) => requestAnimationFrame(r));
+
+    try {
+      // Continuous scan — stopt zodra er een resultaat is
+      const controls = await reader.decodeFromVideoDevice(
+        undefined,
+        "video",
+        (result, err) => {
+          // err is normaal als er nog niets gevonden is → negeren
+          if (!result) return;
+
+          const value = String(result.getText() || "").trim();
+          const format = String(result.getBarcodeFormat() || "");
+
+          // Safety: leeg resultaat skippen
+          if (!value) return;
+
+          // Stop onmiddellijk
+          try {
+            controls?.stop();
+          } catch {}
+          scanControlsRef.current = null;
+
+          try {
+            reader.reset();
+          } catch {}
+
+          setScanning(false);
+
+          const name = prompt(
+            "Naam van de kaart (bijv. AH, Lidl, DM):",
+            "Nieuwe kaart"
+          );
+
+          if (!name) return;
+
+          const newCard = {
+            id: uid(),
+            name: name.trim(),
+            value,
+            format,
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+          };
+
+          setCards((prev) => [newCard, ...prev]);
+        }
+      );
+
+      scanControlsRef.current = controls;
+    } catch (e) {
+      stopScan();
+      alert(
+        "Camera werkt, maar scanner kon niet starten. Controleer toestemming en probeer opnieuw."
+      );
+    }
+  }
+
   async function signInMagicLink() {
     setAuthInfo("");
     if (!supabase) {
@@ -113,49 +217,13 @@ export default function App() {
     });
 
     if (error) setAuthInfo("Login mislukt: " + error.message);
-    else setAuthInfo("Check je e-mail voor de magic link. Open die op dezelfde iPhone.");
+    else setAuthInfo("Check je e-mail voor de magic link (open op dezelfde iPhone).");
   }
 
   async function signOut() {
     if (!supabase) return;
     await supabase.auth.signOut();
     setSyncInfo("");
-  }
-
-  async function startScan() {
-    setScanning(true);
-    setSyncInfo("");
-    try {
-      const result = await reader.decodeOnceFromVideoDevice(undefined, "video");
-      const value = result.getText();
-      const format = String(result.getBarcodeFormat());
-
-      reader.reset();
-      setScanning(false);
-
-      const name = prompt("Naam van de kaart (bijv. AH, Lidl, DM):", "Nieuwe kaart");
-      if (!name) return;
-
-      const newCard = {
-        id: uid(),
-        name: name.trim(),
-        value: value.trim(),
-        format,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      };
-
-      setCards((prev) => [newCard, ...prev]);
-    } catch {
-      reader.reset();
-      setScanning(false);
-      alert("Scannen gestopt of geen camera-toestemming. Probeer opnieuw.");
-    }
-  }
-
-  function stopScan() {
-    reader.reset();
-    setScanning(false);
   }
 
   function removeCard(id) {
@@ -201,7 +269,7 @@ export default function App() {
       for (const c of cloudAsLocal) {
         const local = merged.get(c.id);
         if (!local) merged.set(c.id, c);
-        else merged.set(c.id, (c.updatedAt > (local.updatedAt || 0)) ? c : local);
+        else merged.set(c.id, c.updatedAt > (local.updatedAt || 0) ? c : local);
       }
 
       const mergedArr = Array.from(merged.values()).sort(
@@ -218,7 +286,10 @@ export default function App() {
         format: c.format || ""
       }));
 
-      const { error: pushErr } = await supabase.from("cards").upsert(payload, { onConflict: "id" });
+      const { error: pushErr } = await supabase
+        .from("cards")
+        .upsert(payload, { onConflict: "id" });
+
       if (pushErr) throw pushErr;
 
       setSyncInfo("Sync klaar ✅");
@@ -244,7 +315,6 @@ export default function App() {
       </header>
 
       <main className="content">
-        {/* Supabase warning */}
         {!supabaseConfigOk && (
           <section className="card">
             <h2>Supabase niet ingesteld</h2>
@@ -252,12 +322,12 @@ export default function App() {
               Voeg in Vercel → Project → Settings → Environment Variables toe:
               <br />• <b>VITE_SUPABASE_URL</b>
               <br />• <b>VITE_SUPABASE_ANON_KEY</b>
-              <br />Daarna Redeploy.
+              <br />
+              Daarna redeploy.
             </p>
           </section>
         )}
 
-        {/* AUTH + SYNC */}
         <section className="card">
           <h2>Cloud Sync (Supabase)</h2>
 
@@ -283,32 +353,43 @@ export default function App() {
                 Ingelogd als: <b>{session.user.email}</b>
               </p>
               <div className="btnRow">
-                <button className="primary" onClick={syncToCloud}>Sync nu</button>
-                <button className="ghost" onClick={signOut}>Logout</button>
+                <button className="primary" onClick={syncToCloud}>
+                  Sync nu
+                </button>
+                <button className="ghost" onClick={signOut}>
+                  Logout
+                </button>
               </div>
               {syncInfo && <p className="small">{syncInfo}</p>}
             </>
           )}
         </section>
 
-        {/* SCAN */}
         <section className="card">
           <h2>Scan kaart</h2>
 
           {!scanning ? (
-            <button className="primary" onClick={startScan}>📷 Start scan</button>
+            <button className="primary" onClick={startScan}>
+              📷 Start scan
+            </button>
           ) : (
             <>
               <video id="video" className="video" />
               <div style={{ height: 10 }} />
-              <button className="ghost" onClick={stopScan}>Stop</button>
+              <button className="ghost" onClick={stopScan}>
+                Stop
+              </button>
+              <p className="small">
+                Richt de camera op de barcode/QR. Zorg voor goede belichting en houd stil.
+              </p>
             </>
           )}
 
-          <p className="small">Tip: zet je schermhelderheid hoog voor sneller scannen.</p>
+          <p className="small">
+            Tip: zet je schermhelderheid hoog voor sneller scannen bij de kassa.
+          </p>
         </section>
 
-        {/* CARDS */}
         <section className="card">
           <h2>Mijn kaarten</h2>
 
@@ -356,7 +437,6 @@ export default function App() {
         </section>
       </main>
 
-      {/* POPUP */}
       <AnimatePresence>
         {selected && (
           <motion.div
