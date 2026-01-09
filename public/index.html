@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Loyalty Wallet</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#1976d2">
+</head>
+<body>
+  <div id="app">
+    <h1>Loyalty Wallet</h1>
+    <p>Welkom bij de Loyalty Wallet PWA.</p>
+  </div>
+
+  <script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+      navigator.serviceWorker.register('/service-worker.js')
+        .then(function() { console.log('SW registered'); })
+        .catch(function(err) { console.error('SW registration failed:', err); });
+    });
+  }
+  </script>
+</body>
+</html>
